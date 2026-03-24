@@ -3,15 +3,22 @@ jobs:
   go:
     runs-on: macos-latest
     steps:
-      - name: Fetch manifest
-        run: curl -s -A "AppleTV11,1/1 AtVUI" https://sylvan.apple.com/Apple_TV_4K_v3.json -o manifest.json && wc -c manifest.json
+      - name: Try multiple manifest URLs
+        run: |
+          for URL in \
+            "https://sylvan.apple.com/Apple_TV_4K_v3.json" \
+            "https://sylvan.apple.com/Apple_TV_4K_v2.json" \
+            "https://sylvan.apple.com/entries.json" \
+            "https://atv-ext.apple.com/lazy-assets-v2/select-items"; do
+            echo "=== $URL ==="
+            curl -sv -A "AppleTV11,1/1 AtVUI" "$URL" 2>&1 | tail -20
+            echo ""
+          done
 
-      - name: Find Snoopy URL
-        run: python3 -c "import json; d=json.load(open('manifest.json')); urls=[a['url'] for a in d.get('assets',[]) if 'snoopy' in a.get('url','').lower()]; print(urls or [a['url'] for a in d.get('assets',[])[:5]])"
-
-      - name: Upload manifest
+      - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: manifest
+          name: results
           path: manifest.json
           retention-days: 2
+        if: always()
