@@ -2,13 +2,52 @@ on: push
 jobs:
   go:
     runs-on: macos-latest
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
 
-      - name: Search for Snoopy aerial online
+      - name: Test IPSW URL accessibility
         run: |
-          pip install yt-dlp -q
-          echo "=== YouTube search ==="
-          yt-dlp --get-url "ytsearch3:Apple TV Snoopy Space aerial screensaver 4K" 2>&1 | head -20
-          echo "=== Archive.org ==="
-          curl -s "https://archive.org/search?query=apple+aerial+snoopy&output=json" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(i.get('identifier',''), i.get('title','')) for i in d.get('response',{}).get('docs',[])[:10]]" 2>&1
+          URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
+          curl -sI "$URL" | head -10
+
+      - name: List IPSW zip contents (no full download)
+        run: |
+          URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
+          # Download last 64KB (ZIP central directory is at the end)
+          curl -s -r -65536- "$URL" -o ipsw_tail.bin
+          python3 -c "
+import struct, zipfile, io
+
+with open('ipsw_tail.bin', 'rb') as f:
+    data = f.read()
+
+# Find End of Central Directory signature
+EOCD_SIG = b'\x50\x4b\x05\x06'
+pos = data.rfind(EOCD_SIG)
+if pos == -1:
+    print('EOCD not found in tail - zip too large, need more bytes')
+    print('Tail size:', len(data))
+else:
+    print('Found EOCD at offset from tail end:', pos)
+    # Parse EOCD
+    eocd = data[pos:]
+    _, disk, start_disk, num_recs, total_recs, cd_size, cd_offset, comment_len = struct.unpack('<IHHHHIIH', eocd[:22])
+    print(f'CD offset: {cd_offset}, size: {cd_size}, records: {total_recs}')
+"
+
+      - name: Download ZIP central directory
+        run: |
+          URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
+          # First get file size
+          SIZE=$(curl -sI "$URL" | grep -i content-length | awk '{print $2}' | tr -d '\r')
+          echo "Total IPSW size: $SIZE bytes ($(echo "$SIZE / 1024 / 1024 / 1024" | bc) GB)"
+          python3 list_ipsw_remote.py "$URL" "$SIZE"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipsw-listing
+          path: ipsw_files.txt
+          if-no-files-found: ignore
+          retention-days: 2
+        if: always()
