@@ -1,38 +1,42 @@
 import urllib.request, plistlib
 
-# Try all known Apple TV content/idle asset catalog URLs
-catalog_urls = [
-    "https://mesu.apple.com/assets/com_apple_MobileAsset_TVIdleAssets/com_apple_MobileAsset_TVIdleAssets.xml",
-    "https://mesu.apple.com/assets/com_apple_MobileAsset_TVIdleScreenVideoAssets/com_apple_MobileAsset_TVIdleScreenVideoAssets.xml",
-    "https://mesu.apple.com/assets/com_apple_MobileAsset_TVWallpaperAerials/com_apple_MobileAsset_TVWallpaperAerials.xml",
-    "https://mesu.apple.com/assets/com_apple_MobileAsset_TVWallpaper/com_apple_MobileAsset_TVWallpaper.xml",
-    "https://mesu.apple.com/assets/tvos/com_apple_MobileAsset_TVIdleAssets/com_apple_MobileAsset_TVIdleAssets.xml",
-    "https://mesu.apple.com/assets/tvos16/com_apple_MobileAsset_TVIdleAssets/com_apple_MobileAsset_TVIdleAssets.xml",
-    "https://mesu.apple.com/assets/tvos17/com_apple_MobileAsset_TVIdleAssets/com_apple_MobileAsset_TVIdleAssets.xml",
-]
+req = urllib.request.Request(
+    "https://mesu.apple.com/assets/com_apple_MobileAsset_SoftwareUpdate/com_apple_MobileAsset_SoftwareUpdate.xml",
+    headers={"User-Agent": "AppleTV14,1/17.4 CFNetwork/1494"}
+)
+with urllib.request.urlopen(req, timeout=30) as r:
+    data = r.read()
 
-for url in catalog_urls:
-    try:
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "AppleTV14,1/17.4 CFNetwork/1494.0.7 Darwin/23.4.0"
-        })
-        with urllib.request.urlopen(req, timeout=15) as r:
-            raw = r.read()
-        print(f"OK {len(raw)}b: {url}")
-        try:
-            plist = plistlib.loads(raw)
-            assets = plist.get('Assets', [])
-            print(f"  Assets: {len(assets)}")
-            for a in assets[:3]:
-                base = a.get('__BaseURL', '')
-                rel = a.get('__RelativePath', '')
-                print(f"  {base}{rel}")
-                # Check for snoopy
-                full_str = str(a)
-                if 'snoopy' in full_str.lower():
-                    print(f"  *** SNOOPY FOUND ***")
-                    print(f"  {full_str[:500]}")
-        except:
-            print(f"  Raw: {raw[:200]}")
-    except Exception as e:
-        print(f"FAIL {url}: {e}")
+plist = plistlib.loads(data)
+assets = plist.get('Assets', [])
+
+# Collect all unique ATV models and versions
+atv_builds = {}
+for a in assets:
+    compat = a.get('SupportedDevices', [])
+    for dev in compat:
+        if 'AppleTV' in dev:
+            ver = a.get('OSVersion','?')
+            build = a.get('Build','?')
+            if dev not in atv_builds:
+                atv_builds[dev] = set()
+            atv_builds[dev].add((ver, build))
+
+for dev in sorted(atv_builds.keys()):
+    builds = sorted(atv_builds[dev], reverse=True)
+    print(f"{dev}: {[f'v{v} ({b})' for v,b in builds[:5]]}")
+
+# Find latest AppleTV11,1 or newer OTA
+print("\n=== Newest 4K packages ===")
+for a in assets:
+    compat = a.get('SupportedDevices', [])
+    if any(dev in ['AppleTV11,1','AppleTV14,1','AppleTV13,2'] for dev in compat):
+        ver = a.get('OSVersion','?')
+        build = a.get('Build','?')
+        base = a.get('__BaseURL','')
+        rel = a.get('__RelativePath','')
+        size = a.get('_DownloadSize', 0)
+        print(f"{compat} v{ver} {build} {size//1024//1024}MB")
+        print(f"  URL: {base}{rel}")
+        print(f"IPSW_URL={base}{rel}")
+        break
