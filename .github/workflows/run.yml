@@ -4,28 +4,31 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 300
     steps:
-      - name: Explore simulator runtime paths
+      - name: Find and mount tvOS runtime disk image
         run: |
-          echo "=== tvOS_22L572 contents ==="
-          ls -la /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ 2>/dev/null | head -20
+          echo "=== Runtimes directory ==="
+          ls -la /Library/Developer/CoreSimulator/Profiles/Runtimes/
+          find /Library/Developer/CoreSimulator/Profiles/Runtimes/ -maxdepth 3 2>/dev/null | head -30
 
-          echo "=== Full path from article ==="
-          ls /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/Library/ 2>/dev/null || echo "no Library"
-          find /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ -maxdepth 5 2>/dev/null | head -30
+          echo "=== Find disk image files ==="
+          find /Library/Developer/CoreSimulator -name "*.dmg" -o -name "*.img" -o -name "*.cryptex" 2>/dev/null | head -20
 
-          echo "=== Alternative paths ==="
-          ls /Library/Developer/CoreSimulator/Profiles/Runtimes/ 2>/dev/null | head -20
-          ls /Library/Developer/CoreSimulator/Images/ 2>/dev/null | head -20
+          echo "=== xcrun simctl runtime show ==="
+          xcrun simctl runtime show "BE1675DE-8C48-49F8-9DCB-EFA5AB312771" 2>&1
 
-          echo "=== All simruntime directories ==="
-          find / -name "*.simruntime" -maxdepth 8 2>/dev/null | head -20
-
-          echo "=== xcrun simctl ==="
-          xcrun simctl runtime list 2>&1 | head -20
-
-      - name: Mount tvOS runtime if needed
+      - name: Mount tvOS 18.5 runtime
         run: |
-          xcrun simctl runtime show com.apple.CoreSimulator.SimRuntime.tvOS-18-5 2>&1 || true
-          RUNTIME_PATH=$(xcrun simctl runtime show com.apple.CoreSimulator.SimRuntime.tvOS-18-5 2>&1 | grep -i path | awk '{print $NF}')
-          echo "Runtime path: $RUNTIME_PATH"
-          find "$RUNTIME_PATH" -name "*.mov" 2>/dev/null | head -20 || true
+          # Get the disk image path
+          DMGPATH=$(xcrun simctl runtime show "BE1675DE-8C48-49F8-9DCB-EFA5AB312771" 2>&1 | grep -i "path\|dmg\|image" | head -3)
+          echo "DMG info: $DMGPATH"
+
+          # Try to mount using simctl
+          xcrun simctl runtime match "BE1675DE-8C48-49F8-9DCB-EFA5AB312771" 2>&1 || true
+
+          # Check if volume got populated
+          ls /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ 2>/dev/null
+          echo "Vol contents: $(ls /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ 2>/dev/null | wc -l) files"
+
+          # Find .mov files anywhere on the system (excluding noise)
+          echo "=== All .mov files on system ==="
+          find /Library/Developer/CoreSimulator/ -name "*.mov" 2>/dev/null | head -30
