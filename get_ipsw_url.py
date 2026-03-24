@@ -1,4 +1,4 @@
-import urllib.request, plistlib, io
+import urllib.request, plistlib
 
 print("Fetching mesu catalog...")
 req = urllib.request.Request(
@@ -8,21 +8,35 @@ req = urllib.request.Request(
 with urllib.request.urlopen(req, timeout=30) as r:
     data = r.read()
 
-print(f"Total size: {len(data)} bytes")
 plist = plistlib.loads(data)
 assets = plist.get('Assets', [])
 print(f"Total assets: {len(assets)}")
 
-# Find Apple TV assets
+# Find newest Apple TV 4K assets (AppleTV11,1 = 4K 1st/2nd gen, AppleTV14,1 = 4K 3rd gen)
+target_models = {'AppleTV11,1', 'AppleTV14,1', 'AppleTV13,2'}
+seen = {}
+
 for a in assets:
-    board = a.get('BoardID', '') or a.get('SupportedDeviceModels', [])
-    compat = a.get('SupportedDevices', []) or []
-    if any('AppleTV' in str(x) for x in [board] + compat):
-        ver = a.get('OSVersion', '')
-        build = a.get('Build', '')
-        url_key = a.get('__RelativePath', '')
+    compat = a.get('SupportedDevices', [])
+    models = [x for x in compat if x in target_models]
+    if not models:
+        continue
+    ver = a.get('OSVersion', '')
+    build = a.get('Build', '')
+    key = (tuple(sorted(models)), ver, build)
+    if key not in seen:
+        seen[key] = a
         base = a.get('__BaseURL', '')
-        print(f"  ATV: {compat} v{ver} build={build}")
-        print(f"  URL: {base}{url_key}")
-        print(f"  Size: {a.get('_DownloadSize', '?')}")
-        print()
+        rel = a.get('__RelativePath', '')
+        size = a.get('_DownloadSize', 0)
+        print(f"{models} v{ver} build={build} size={size//1024//1024}MB")
+        print(f"  {base}{rel}")
+
+# Also check for aerial/wallpaper asset types
+print("\n=== Aerial/Wallpaper assets ===")
+for a in assets:
+    atype = a.get('AssetType', '')
+    if 'aerial' in atype.lower() or 'wallpaper' in atype.lower() or 'idle' in atype.lower():
+        base = a.get('__BaseURL', '')
+        rel = a.get('__RelativePath', '')
+        print(f"{atype}: {base}{rel}")
