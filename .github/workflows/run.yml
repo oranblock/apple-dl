@@ -3,50 +3,24 @@ jobs:
   go:
     runs-on: macos-latest
     steps:
-      - name: Test sylvan videos and find newer manifests
-        run: |
-          echo "=== Test classic video download ==="
-          curl -sI "https://sylvan.apple.com/Videos/b1-1.mov" | head -5
+      - uses: actions/checkout@v4
 
-          echo "=== Try newer manifest user agents ==="
-          for UA in \
-            "com.apple.tv.TVShows/2 CFNetwork/1490.0.4 Darwin/23.2.0" \
-            "TVShows/2 CFNetwork" \
-            "AppleTV6,2/11.1" \
-            "com.apple.TVWallpaper/1 CFNetwork"; do
-            echo "UA: $UA"
-            curl -sf -A "$UA" "https://sylvan.apple.com/Apple_TV_4K_v3.json" -o tmp.json 2>/dev/null
-            SIZE=$(wc -c < tmp.json 2>/dev/null || echo 0)
-            echo "  size: $SIZE bytes"
-            if [ "$SIZE" -gt 500 ]; then
-              grep -i snoopy tmp.json | head -3 || echo "  no snoopy"
-              head -c 200 tmp.json
-            fi
-          done
+      - name: Test sylvan classic videos
+        run: curl -sI "https://sylvan.apple.com/Videos/b1-1.mov" | grep -E "HTTP|Content"
 
-      - name: Extract all URLs from entries.json
+      - name: Check newer manifests
+        run: python3 check_newer.py
+
+      - name: Get all classic URLs
         run: |
           curl -sf -A "AppleTV11,1/1 AtVUI" "https://sylvan.apple.com/entries.json" -o entries.json
-          python3 << 'EOF'
-import json
-with open('entries.json') as f:
-    groups = json.load(f)
-urls = []
-for g in groups:
-    for a in g.get('assets', []):
-        if a.get('type') == 'video':
-            urls.append(a['url'] + '  # ' + a.get('accessibilityLabel',''))
-with open('all_urls.txt', 'w') as f:
-    f.write('\n'.join(urls))
-print(f"Total URLs: {len(urls)}")
-for u in urls: print(u)
-EOF
+          python3 extract_urls.py
 
       - uses: actions/upload-artifact@v4
         with:
           name: results
           path: |
             all_urls.txt
-            tmp.json
+            newer_manifest.json
+          if-no-files-found: ignore
           retention-days: 2
-        if: always()
