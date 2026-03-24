@@ -1,0 +1,23 @@
+name: Download Apple Aerial
+on:
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: macos-latest
+    steps:
+      - name: Download Snoopy Space
+        run: |
+          curl -L \
+            -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15" \
+            -H "Referer: https://www.apple.com/" \
+            -o snoopy_space.mov \
+            "https://updates.cdn-apple.com/2023/videos/aerial/2k/h264/AD001_A008_C005_SNOOPY_SPACE_v01_SDR_PS_FINAL_20230619.mov"
+          ls -lh snoopy_space.mov
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snoopy_space
+          path: snoopy_space.mov
+          retention-days: 5
