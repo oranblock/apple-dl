@@ -4,24 +4,26 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 300
     steps:
-      - name: Boot tvOS sim and extract ALL Snoopy assets
+      - name: Boot tvOS sim and extract EVERYTHING
         run: |
           DEVICE_ID=$(xcrun simctl create "SnoopyTV" "Apple TV 4K (3rd generation)" "com.apple.CoreSimulator.SimRuntime.tvOS-18-5")
           xcrun simctl boot "$DEVICE_ID" 2>&1 || true
           sleep 15
 
-          ASSETS_PATH="/Library/Developer/CoreSimulator/Volumes/tvOS_22L572/Library/Developer/CoreSimulator/Profiles/Runtimes/tvOS 18.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/PrivateFrameworks/IdleCharacterUI.framework"
-          echo "Assets path exists: $(ls "$ASSETS_PATH" 2>/dev/null | head -5)"
+          FRAMEWORK="/Library/Developer/CoreSimulator/Volumes/tvOS_22L572/Library/Developer/CoreSimulator/Profiles/Runtimes/tvOS 18.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/PrivateFrameworks/IdleCharacterUI.framework"
 
-          mkdir -p ~/snoopy_assets
-          find "$ASSETS_PATH" \( -name "*.mov" -o -name "*.heic" -o -name "*.png" \) -exec cp {} ~/snoopy_assets/ \;
+          echo "=== Full framework structure ==="
+          find "$FRAMEWORK" -not -name "*.mov" -not -name "*.heic" -not -name "*.png" | head -80
 
-          echo "=== Copied files ==="
-          ls -lh ~/snoopy_assets/ | sort -k5 -rh | head -50
-          echo "Total: $(ls ~/snoopy_assets/ | wc -l) files, $(du -sh ~/snoopy_assets/ | cut -f1)"
+          echo "=== All file types ==="
+          find "$FRAMEWORK" -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -20
+
+          mkdir -p ~/snoopy_full
+          cp -r "$FRAMEWORK/" ~/snoopy_full/
+          echo "Total: $(find ~/snoopy_full -type f | wc -l) files, $(du -sh ~/snoopy_full | cut -f1)"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: snoopy-assets
-          path: ~/snoopy_assets/
+          name: snoopy-full-framework
+          path: ~/snoopy_full/
           retention-days: 7
