@@ -3,50 +3,23 @@ jobs:
   go:
     runs-on: macos-latest
     steps:
-      - name: Find tvOS IPSW URL
-        run: |
-          # Query Apple's firmware catalog for AppleTV14,1 (4K 3rd gen)
-          curl -s "https://api.ipsw.me/v4/device/AppleTV14,1" | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-firms=d.get('firmwares',[])
-print('Latest firmwares:')
-for f in firms[:3]:
-    print(f['version'], f['buildid'], f['url'])
-"
+      - uses: actions/checkout@v4
 
-      - name: Download and extract tvOS IPSW (partial)
-        run: |
-          # Get latest tvOS IPSW URL
-          IPSW_URL=$(curl -s "https://api.ipsw.me/v4/device/AppleTV14,1" | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-firms=d.get('firmwares',[])
-for f in firms:
-    if f.get('signed',False) or True:
-        print(f['url'])
-        break
-")
-          echo "IPSW URL: $IPSW_URL"
+      - name: Get IPSW URL
+        run: python3 get_ipsw_url.py | tee ipsw_info.txt
 
-          # Download just first 50MB to find file table / dyld cache
-          curl -L -r 0-52428800 "$IPSW_URL" -o partial.ipsw
+      - name: Download partial IPSW
+        run: |
+          URL=$(grep "^IPSW_URL=" ipsw_info.txt | cut -d= -f2-)
+          echo "Downloading: $URL"
+          curl -L -r 0-52428800 "$URL" -o partial.ipsw
           ls -lh partial.ipsw
 
-          # IPSW is a zip - try to list contents
-          python3 -c "
-import zipfile
-try:
-    z = zipfile.ZipFile('partial.ipsw')
-    for n in z.namelist():
-        print(n)
-except Exception as e:
-    print('zip error:', e)
-"
+      - name: List IPSW contents
+        run: python3 list_ipsw.py
 
       - uses: actions/upload-artifact@v4
         with:
           name: ipsw-info
-          path: partial.ipsw
+          path: ipsw_info.txt
           retention-days: 1
-        if: always()
