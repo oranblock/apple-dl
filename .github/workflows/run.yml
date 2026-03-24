@@ -6,32 +6,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ipsw tool
+      - name: Install ipsw
         run: brew install blacktop/tap/ipsw
 
       - name: Download IPSW
         run: |
           URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
           curl -L --progress-bar "$URL" -o Restore.ipsw
+          unzip -o Restore.ipsw "*.dmg" "*.plist" -d extracted/
+          ls -lh extracted/
 
-      - name: List filesystem and find aerial assets
+      - name: Mount and explore unencrypted DMGs
         run: |
-          echo "=== IPSW info ==="
-          ipsw info Restore.ipsw 2>&1 | head -30
+          for dmg in extracted/*.dmg; do
+            echo "=== Mounting $dmg ==="
+            MNT=$(hdiutil attach "$dmg" -readonly -noverify -noautoopen -mountpoint /tmp/mnt_dmg 2>&1)
+            echo "$MNT"
+            if mount | grep -q mnt_dmg; then
+              find /tmp/mnt_dmg -type f | head -100 | tee -a dmg_files.txt
+              hdiutil detach /tmp/mnt_dmg 2>/dev/null || true
+            fi
+          done
 
-          echo "=== Search for screensaver/aerial files ==="
-          ipsw fw ls Restore.ipsw 2>&1 | grep -i "aerial\|snoopy\|screensaver\|idle\|wallpaper\|tvwall\|TVIdle\|\.mov\|\.mp4" | head -50
-
-          echo "=== All filesystem entries ==="
-          ipsw fw ls Restore.ipsw 2>&1 | grep -i "TV\|screen\|video\|media\|asset" | head -50
-
-      - name: Extract screensaver app if found
+      - name: Try ipsw extract on encrypted DMG
         run: |
-          ipsw extract --dylibs Restore.ipsw --pattern "TVIdle\|AerialScreen\|TVWallpaper\|screensaver" 2>&1 | head -30 || true
+          echo "=== ipsw extract files ==="
+          ipsw extract --files --pattern ".*" Restore.ipsw -o ./extracted_files/ 2>&1 | head -50 || true
+          echo "=== ipsw dyld ==="
+          ipsw extract --dyld Restore.ipsw -o ./dyld_out/ 2>&1 | head -20 || true
+
+      - name: Search dyld cache for aerial strings
+        run: |
+          if ls dyld_out/ 2>/dev/null; then
+            find dyld_out/ -type f | xargs strings 2>/dev/null | grep -i "aerial\|snoopy\|TVIdle\|screensaver\|updates.cdn" | head -30
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ipsw-analysis
-          path: "*.plist"
+          name: dmg-contents
+          path: |
+            dmg_files.txt
+            extracted_files/
+          if-no-files-found: ignore
           retention-days: 2
         if: always()
