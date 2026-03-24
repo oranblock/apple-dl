@@ -4,52 +4,38 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 300
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install ipsw
-        run: brew install blacktop/tap/ipsw
-
-      - name: Download IPSW
+      - name: Download tvOS 18.2 simulator runtime
         run: |
-          URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
-          curl -L --progress-bar "$URL" -o Restore.ipsw
+          xcodebuild -version
+          xcrun simctl list runtimes 2>&1 | grep -i tvos || true
+          # Download tvOS 18.2 simulator
+          xcodebuild -downloadPlatform tvOS 2>&1 | tail -20 || true
 
-      - name: Try ipsw key lookup and decrypt
+      - name: Find Snoopy screensaver .mov files
         run: |
-          echo "=== ipsw info ==="
-          ipsw info Restore.ipsw 2>&1
-
-          echo "=== ipsw keys ==="
-          ipsw keys Restore.ipsw 2>&1 | head -30 || true
-
-          echo "=== Try decrypt AEA ==="
-          ipsw extract --aea Restore.ipsw -o aea_out/ 2>&1 | head -30 || true
-
-          echo "=== Try filesystem extract ==="
-          ipsw extract --fs Restore.ipsw -o fs_out/ 2>&1 | head -30 || true
-
-      - name: Search AEA output
-        run: |
-          if ls aea_out/ 2>/dev/null || ls fs_out/ 2>/dev/null; then
-            find aea_out/ fs_out/ -type f 2>/dev/null | head -20
-            find aea_out/ fs_out/ -name "*aerial*" -o -name "*snoopy*" -o -name "*screensaver*" 2>/dev/null | head -20
+          echo "=== Searching simulator runtimes ==="
+          ls /Library/Developer/CoreSimulator/Volumes/ 2>/dev/null || echo "no volumes yet"
+          RUNTIME_PATH=$(find /Library/Developer/CoreSimulator/Volumes/ -name "tvOS*.simruntime" -type d 2>/dev/null | head -1)
+          echo "Runtime: $RUNTIME_PATH"
+          if [ -n "$RUNTIME_PATH" ]; then
+            echo "=== Finding .mov files ==="
+            find "$RUNTIME_PATH" -name "*.mov" | head -50
+            echo "=== Finding Snoopy specifically ==="
+            find "$RUNTIME_PATH" -name "*.mov" | xargs -I{} bash -c 'echo "$(wc -c < "{}") {}"' | sort -rn | head -20
           fi
 
-      - name: Try strings on ramdisk IM4P
+      - name: Copy all screensaver assets
         run: |
-          unzip -p Restore.ipsw "*.dmg" > ramdisk.bin 2>/dev/null || true
-          ipsw extract --ramdisk Restore.ipsw -o ramdisk_out/ 2>&1 | head -30 || true
-          if ls ramdisk_out/ 2>/dev/null; then
-            find ramdisk_out/ -type f | xargs strings 2>/dev/null | grep -iE "aerial|snoopy|CDN|updates\.cdn|sylvan|screensaver|TVIdle|MobileAsset" | sort -u | head -50
+          RUNTIME_PATH=$(find /Library/Developer/CoreSimulator/Volumes/ -name "tvOS*.simruntime" -type d 2>/dev/null | head -1)
+          if [ -n "$RUNTIME_PATH" ]; then
+            mkdir -p ~/screensavers
+            find "$RUNTIME_PATH" \( -name "*.mov" -o -name "*.heic" \) -exec cp {} ~/screensavers/ \;
+            ls -lh ~/screensavers/ | head -30
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: decrypt-results
-          path: |
-            aea_out/
-            fs_out/
-            ramdisk_out/
-          if-no-files-found: ignore
-          retention-days: 2
+          name: snoopy-screensavers
+          path: ~/screensavers/
+          retention-days: 5
         if: always()
