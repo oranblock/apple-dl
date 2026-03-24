@@ -5,21 +5,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get IPSW URL
-        run: python3 get_ipsw_url.py | tee ipsw_info.txt
-
-      - name: Download partial IPSW
+      - name: Search for Snoopy aerial online
         run: |
-          URL=$(grep "^IPSW_URL=" ipsw_info.txt | cut -d= -f2-)
-          echo "Downloading: $URL"
-          curl -L -r 0-52428800 "$URL" -o partial.ipsw
-          ls -lh partial.ipsw
-
-      - name: List IPSW contents
-        run: python3 list_ipsw.py
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ipsw-info
-          path: ipsw_info.txt
-          retention-days: 1
+          pip install yt-dlp -q
+          echo "=== YouTube search ==="
+          yt-dlp --get-url "ytsearch3:Apple TV Snoopy Space aerial screensaver 4K" 2>&1 | head -20
+          echo "=== Archive.org ==="
+          curl -s "https://archive.org/search?query=apple+aerial+snoopy&output=json" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(i.get('identifier',''), i.get('title','')) for i in d.get('response',{}).get('docs',[])[:10]]" 2>&1
