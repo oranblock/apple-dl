@@ -9,44 +9,40 @@ jobs:
       - name: Install ipsw
         run: brew install blacktop/tap/ipsw
 
-      - name: Download IPSW
+      - name: Download IPSW and extract small files
         run: |
           URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
           curl -L --progress-bar "$URL" -o Restore.ipsw
           unzip -o Restore.ipsw "*.dmg" "*.plist" -d extracted/
           ls -lh extracted/
+          file extracted/*.dmg
 
-      - name: Mount and explore unencrypted DMGs
+      - name: Strings search on unencrypted DMGs
         run: |
           for dmg in extracted/*.dmg; do
-            echo "=== Mounting $dmg ==="
-            MNT=$(hdiutil attach "$dmg" -readonly -noverify -noautoopen -mountpoint /tmp/mnt_dmg 2>&1)
-            echo "$MNT"
-            if mount | grep -q mnt_dmg; then
-              find /tmp/mnt_dmg -type f | head -100 | tee -a dmg_files.txt
-              hdiutil detach /tmp/mnt_dmg 2>/dev/null || true
+            echo "=== strings $dmg ==="
+            strings "$dmg" | grep -iE "aerial|snoopy|screensaver|TVIdle|updates\.cdn|sylvan|wallpaper|CDN|mesu|\.mov|\.m4v" | head -30
+          done
+
+      - name: Try ipsw remote extract
+        run: |
+          URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
+          ipsw extract --remote "$URL" --dyld -o dyld_out/ 2>&1 | head -20 || true
+          ipsw extract --remote "$URL" --kernel -o kernel_out/ 2>&1 | head -20 || true
+
+      - name: Strings search dyld/kernel
+        run: |
+          for dir in dyld_out kernel_out; do
+            if ls "$dir"/ 2>/dev/null; then
+              echo "=== $dir ==="
+              find "$dir" -type f | xargs strings 2>/dev/null | grep -iE "aerial|snoopy|TVIdle|screensaver|updates\.cdn-apple|sylvan\.apple|mesu\.apple|\.mov" | sort -u | head -50
             fi
           done
 
-      - name: Try ipsw extract on encrypted DMG
-        run: |
-          echo "=== ipsw extract files ==="
-          ipsw extract --files --pattern ".*" Restore.ipsw -o ./extracted_files/ 2>&1 | head -50 || true
-          echo "=== ipsw dyld ==="
-          ipsw extract --dyld Restore.ipsw -o ./dyld_out/ 2>&1 | head -20 || true
-
-      - name: Search dyld cache for aerial strings
-        run: |
-          if ls dyld_out/ 2>/dev/null; then
-            find dyld_out/ -type f | xargs strings 2>/dev/null | grep -i "aerial\|snoopy\|TVIdle\|screensaver\|updates.cdn" | head -30
-          fi
-
       - uses: actions/upload-artifact@v4
         with:
-          name: dmg-contents
+          name: strings-results
           path: |
-            dmg_files.txt
-            extracted_files/
-          if-no-files-found: ignore
+            extracted/*.plist
           retention-days: 2
         if: always()
