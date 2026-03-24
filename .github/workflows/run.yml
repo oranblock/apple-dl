@@ -3,44 +3,16 @@ jobs:
   go:
     runs-on: macos-latest
     steps:
-      - name: Search manifests for Snoopy
+      - name: Fetch manifests
         run: |
-          for URL in \
-            "https://sylvan.apple.com/entries.json" \
-            "https://sylvan.apple.com/2/entries.json" \
-            "https://sylvan.apple.com/3/entries.json" \
-            "https://sylvan.apple.com/4/entries.json" \
-            "https://sylvan.apple.com/5/entries.json"; do
-            echo "=== $URL ==="
-            OUT=$(curl -sf -A "AppleTV11,1/1 AtVUI" "$URL" 2>/dev/null)
-            if [ -n "$OUT" ]; then
-              echo "$OUT" | python3 -c "
-import json,sys
-try:
-  d=json.load(sys.stdin)
-  assets=d.get('assets',d.get('entries',[]))
-  snoopy=[a.get('url','') for a in assets if 'snoopy' in str(a).lower()]
-  if snoopy:
-    print('SNOOPY FOUND:', snoopy)
-  else:
-    print('No snoopy. Total assets:', len(assets))
-    for a in assets[:2]: print('  sample:', a.get('url',''))
-except Exception as e:
-  print('parse error:', e)
-  print(sys.stdin.read()[:200])
-"
-            else
-              echo "  empty/failed"
-            fi
-          done
-
-      - name: Also try entries.json and save
-        run: |
-          curl -s -A "AppleTV11,1/1 AtVUI" https://sylvan.apple.com/entries.json -o entries.json
-          curl -s -A "AppleTV11,1/1 AtVUI" https://sylvan.apple.com/2/entries.json -o entries2.json 2>/dev/null || true
+          curl -sf -A "AppleTV11,1/1 AtVUI" https://sylvan.apple.com/entries.json -o entries1.json && echo "entries1: ok" || echo "entries1: fail"
+          curl -sf -A "AppleTV11,1/1 AtVUI" https://sylvan.apple.com/2/entries.json -o entries2.json && echo "entries2: ok" || echo "entries2: fail"
+          curl -sf -A "AppleTV11,1/1 AtVUI" https://sylvan.apple.com/3/entries.json -o entries3.json && echo "entries3: ok" || echo "entries3: fail"
+          ls -lh *.json
 
       - uses: actions/upload-artifact@v4
         with:
           name: manifests
           path: "*.json"
           retention-days: 2
+        if: always()
