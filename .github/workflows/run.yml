@@ -3,35 +3,50 @@ jobs:
   go:
     runs-on: macos-latest
     steps:
-      - name: Find tvOS firmware URL
+      - name: Find tvOS IPSW URL
         run: |
-          echo "=== Apple TV OTA manifest ==="
-          curl -s \
-            -H "User-Agent: AppleTV14,1/1 CFNetwork/1490 Darwin/23.0.0" \
-            -H "X-Apple-Device: AppleTV14,1" \
-            "https://mesu.apple.com/assets/com_apple_MobileAsset_TVWallpaperAerials/com_apple_MobileAsset_TVWallpaperAerials.xml" \
-            -o wallpaper.xml
-          echo "wallpaper.xml: $(wc -c < wallpaper.xml) bytes"
-          head -100 wallpaper.xml
+          # Query Apple's firmware catalog for AppleTV14,1 (4K 3rd gen)
+          curl -s "https://api.ipsw.me/v4/device/AppleTV14,1" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+firms=d.get('firmwares',[])
+print('Latest firmwares:')
+for f in firms[:3]:
+    print(f['version'], f['buildid'], f['url'])
+"
 
-      - name: Try other asset catalog URLs
+      - name: Download and extract tvOS IPSW (partial)
         run: |
-          for URL in \
-            "https://mesu.apple.com/assets/com_apple_MobileAsset_TVWallpaperAerials/com_apple_MobileAsset_TVWallpaperAerials.xml" \
-            "https://mesu.apple.com/assets/com_apple_MobileAsset_TVIdleAssets/com_apple_MobileAsset_TVIdleAssets.xml" \
-            "https://mesu.apple.com/assets/com_apple_MobileAsset_TVWallpaper/com_apple_MobileAsset_TVWallpaper.xml" \
-            "https://mesu.apple.com/assets/tvos/com_apple_MobileAsset_TVIdleAssets/com_apple_MobileAsset_TVIdleAssets.xml"; do
-            echo "=== $URL ==="
-            SIZE=$(curl -sf "$URL" -o tmp.xml 2>/dev/null && wc -c < tmp.xml || echo "FAIL")
-            echo "size: $SIZE"
-            if [[ "$SIZE" -gt 100 ]] 2>/dev/null; then
-              grep -i "snoopy\|aerial\|wallpaper\|__RelativePath\|url" tmp.xml | head -10
-            fi
-          done
+          # Get latest tvOS IPSW URL
+          IPSW_URL=$(curl -s "https://api.ipsw.me/v4/device/AppleTV14,1" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+firms=d.get('firmwares',[])
+for f in firms:
+    if f.get('signed',False) or True:
+        print(f['url'])
+        break
+")
+          echo "IPSW URL: $IPSW_URL"
+
+          # Download just first 50MB to find file table / dyld cache
+          curl -L -r 0-52428800 "$IPSW_URL" -o partial.ipsw
+          ls -lh partial.ipsw
+
+          # IPSW is a zip - try to list contents
+          python3 -c "
+import zipfile
+try:
+    z = zipfile.ZipFile('partial.ipsw')
+    for n in z.namelist():
+        print(n)
+except Exception as e:
+    print('zip error:', e)
+"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fw-results
-          path: "*.xml"
-          if-no-files-found: ignore
-          retention-days: 2
+          name: ipsw-info
+          path: partial.ipsw
+          retention-days: 1
+        if: always()
