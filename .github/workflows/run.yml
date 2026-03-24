@@ -6,42 +6,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download IPSW and extract key files
+      - name: Install ipsw tool
+        run: brew install blacktop/tap/ipsw
+
+      - name: Download IPSW
         run: |
           URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
           curl -L --progress-bar "$URL" -o Restore.ipsw
-          echo "Extracting key files..."
-          unzip -o Restore.ipsw "*.plist" "*.mtree" "*.dmg" -d extracted/
-          ls -lh extracted/
-          ls -lh extracted/Firmware/ 2>/dev/null || true
 
-      - name: Search mtree for aerial/snoopy content
+      - name: List filesystem and find aerial assets
         run: |
-          cd extracted
-          echo "=== BuildManifest.plist ==="
-          cat BuildManifest.plist | grep -i "aerial\|snoopy\|wallpaper\|screensaver\|idle" | head -20 || echo "none"
-          echo "=== mtree files ==="
-          for f in Firmware/*.mtree; do
-            echo "--- $f ($(wc -l < $f) lines) ---"
-            grep -i "aerial\|snoopy\|wallpaper\|screensaver\|idle\|\.mov\|\.mp4" "$f" | head -30 || echo "no matches"
-          done
+          echo "=== IPSW info ==="
+          ipsw info Restore.ipsw 2>&1 | head -30
 
-      - name: Mount and explore unencrypted DMGs
+          echo "=== Search for screensaver/aerial files ==="
+          ipsw fw ls Restore.ipsw 2>&1 | grep -i "aerial\|snoopy\|screensaver\|idle\|wallpaper\|tvwall\|TVIdle\|\.mov\|\.mp4" | head -50
+
+          echo "=== All filesystem entries ==="
+          ipsw fw ls Restore.ipsw 2>&1 | grep -i "TV\|screen\|video\|media\|asset" | head -50
+
+      - name: Extract screensaver app if found
         run: |
-          cd extracted
-          for dmg in *.dmg; do
-            echo "=== $dmg ==="
-            hdiutil attach "$dmg" -readonly -noverify -noautoopen 2>&1 | head -5 || true
-            ls /Volumes/ 2>/dev/null
-            find /Volumes/ -name "*aerial*" -o -name "*snoopy*" -o -name "*screensaver*" 2>/dev/null | head -20 || true
-            hdiutil detach /Volumes/* 2>/dev/null || true
-          done
+          ipsw extract --dylibs Restore.ipsw --pattern "TVIdle\|AerialScreen\|TVWallpaper\|screensaver" 2>&1 | head -30 || true
 
       - uses: actions/upload-artifact@v4
         with:
           name: ipsw-analysis
-          path: |
-            extracted/*.plist
-            extracted/Firmware/*.mtree
+          path: "*.plist"
           retention-days: 2
         if: always()
