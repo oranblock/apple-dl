@@ -6,17 +6,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download full IPSW and list contents
+      - name: Download IPSW and extract key files
         run: |
           URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
-          echo "Downloading IPSW..."
           curl -L --progress-bar "$URL" -o Restore.ipsw
-          ls -lh Restore.ipsw
-          echo "Listing contents..."
-          unzip -l Restore.ipsw | tee ipsw_files.txt
+          echo "Extracting key files..."
+          unzip -o Restore.ipsw "*.plist" "*.mtree" "*.dmg" -d extracted/
+          ls -lh extracted/
+          ls -lh extracted/Firmware/ 2>/dev/null || true
+
+      - name: Search mtree for aerial/snoopy content
+        run: |
+          cd extracted
+          echo "=== BuildManifest.plist ==="
+          cat BuildManifest.plist | grep -i "aerial\|snoopy\|wallpaper\|screensaver\|idle" | head -20 || echo "none"
+          echo "=== mtree files ==="
+          for f in Firmware/*.mtree; do
+            echo "--- $f ($(wc -l < $f) lines) ---"
+            grep -i "aerial\|snoopy\|wallpaper\|screensaver\|idle\|\.mov\|\.mp4" "$f" | head -30 || echo "no matches"
+          done
+
+      - name: Mount and explore unencrypted DMGs
+        run: |
+          cd extracted
+          for dmg in *.dmg; do
+            echo "=== $dmg ==="
+            hdiutil attach "$dmg" -readonly -noverify -noautoopen 2>&1 | head -5 || true
+            ls /Volumes/ 2>/dev/null
+            find /Volumes/ -name "*aerial*" -o -name "*snoopy*" -o -name "*screensaver*" 2>/dev/null | head -20 || true
+            hdiutil detach /Volumes/* 2>/dev/null || true
+          done
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ipsw-listing
-          path: ipsw_files.txt
+          name: ipsw-analysis
+          path: |
+            extracted/*.plist
+            extracted/Firmware/*.mtree
           retention-days: 2
+        if: always()
