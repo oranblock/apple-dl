@@ -9,40 +9,47 @@ jobs:
       - name: Install ipsw
         run: brew install blacktop/tap/ipsw
 
-      - name: Download IPSW and extract small files
+      - name: Download IPSW
         run: |
           URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
           curl -L --progress-bar "$URL" -o Restore.ipsw
-          unzip -o Restore.ipsw "*.dmg" "*.plist" -d extracted/
-          ls -lh extracted/
-          file extracted/*.dmg
 
-      - name: Strings search on unencrypted DMGs
+      - name: Try ipsw key lookup and decrypt
         run: |
-          for dmg in extracted/*.dmg; do
-            echo "=== strings $dmg ==="
-            strings "$dmg" | grep -iE "aerial|snoopy|screensaver|TVIdle|updates\.cdn|sylvan|wallpaper|CDN|mesu|\.mov|\.m4v" | head -30
-          done
+          echo "=== ipsw info ==="
+          ipsw info Restore.ipsw 2>&1
 
-      - name: Try ipsw remote extract
-        run: |
-          URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
-          ipsw extract --remote "$URL" --dyld -o dyld_out/ 2>&1 | head -20 || true
-          ipsw extract --remote "$URL" --kernel -o kernel_out/ 2>&1 | head -20 || true
+          echo "=== ipsw keys ==="
+          ipsw keys Restore.ipsw 2>&1 | head -30 || true
 
-      - name: Strings search dyld/kernel
+          echo "=== Try decrypt AEA ==="
+          ipsw extract --aea Restore.ipsw -o aea_out/ 2>&1 | head -30 || true
+
+          echo "=== Try filesystem extract ==="
+          ipsw extract --fs Restore.ipsw -o fs_out/ 2>&1 | head -30 || true
+
+      - name: Search AEA output
         run: |
-          for dir in dyld_out kernel_out; do
-            if ls "$dir"/ 2>/dev/null; then
-              echo "=== $dir ==="
-              find "$dir" -type f | xargs strings 2>/dev/null | grep -iE "aerial|snoopy|TVIdle|screensaver|updates\.cdn-apple|sylvan\.apple|mesu\.apple|\.mov" | sort -u | head -50
-            fi
-          done
+          if ls aea_out/ 2>/dev/null || ls fs_out/ 2>/dev/null; then
+            find aea_out/ fs_out/ -type f 2>/dev/null | head -20
+            find aea_out/ fs_out/ -name "*aerial*" -o -name "*snoopy*" -o -name "*screensaver*" 2>/dev/null | head -20
+          fi
+
+      - name: Try strings on ramdisk IM4P
+        run: |
+          unzip -p Restore.ipsw "*.dmg" > ramdisk.bin 2>/dev/null || true
+          ipsw extract --ramdisk Restore.ipsw -o ramdisk_out/ 2>&1 | head -30 || true
+          if ls ramdisk_out/ 2>/dev/null; then
+            find ramdisk_out/ -type f | xargs strings 2>/dev/null | grep -iE "aerial|snoopy|CDN|updates\.cdn|sylvan|screensaver|TVIdle|MobileAsset" | sort -u | head -50
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: strings-results
+          name: decrypt-results
           path: |
-            extracted/*.plist
+            aea_out/
+            fs_out/
+            ramdisk_out/
+          if-no-files-found: ignore
           retention-days: 2
         if: always()
