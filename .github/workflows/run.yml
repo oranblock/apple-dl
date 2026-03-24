@@ -3,28 +3,35 @@ jobs:
   go:
     runs-on: macos-latest
     steps:
-      - name: Try Snoopy with various Apple TV headers
+      - name: Find tvOS firmware URL
         run: |
-          URL="https://updates.cdn-apple.com/2023/videos/aerial/2k/h264/AD001_A008_C005_SNOOPY_SPACE_v01_SDR_PS_FINAL_20230619.mov"
+          echo "=== Apple TV OTA manifest ==="
+          curl -s \
+            -H "User-Agent: AppleTV14,1/1 CFNetwork/1490 Darwin/23.0.0" \
+            -H "X-Apple-Device: AppleTV14,1" \
+            "https://mesu.apple.com/assets/com_apple_MobileAsset_TVWallpaperAerials/com_apple_MobileAsset_TVWallpaperAerials.xml" \
+            -o wallpaper.xml
+          echo "wallpaper.xml: $(wc -c < wallpaper.xml) bytes"
+          head -100 wallpaper.xml
 
-          for UA in \
-            "AppleTV11,1/1" \
-            "AppleTV14,1/1" \
-            "com.apple.tvwallpaper" \
-            "TVWallpaper/1.0 CFNetwork/1490 Darwin/23.0.0" \
-            ""; do
-            echo "UA: '$UA'"
-            curl -sI \
-              -A "$UA" \
-              -H "X-Apple-Store-Front: 143441-1,29" \
-              -H "X-Apple-TV-Model: AppleTV14,1" \
-              "$URL" | grep -E "HTTP|Content-Length|Location"
-            echo ""
+      - name: Try other asset catalog URLs
+        run: |
+          for URL in \
+            "https://mesu.apple.com/assets/com_apple_MobileAsset_TVWallpaperAerials/com_apple_MobileAsset_TVWallpaperAerials.xml" \
+            "https://mesu.apple.com/assets/com_apple_MobileAsset_TVIdleAssets/com_apple_MobileAsset_TVIdleAssets.xml" \
+            "https://mesu.apple.com/assets/com_apple_MobileAsset_TVWallpaper/com_apple_MobileAsset_TVWallpaper.xml" \
+            "https://mesu.apple.com/assets/tvos/com_apple_MobileAsset_TVIdleAssets/com_apple_MobileAsset_TVIdleAssets.xml"; do
+            echo "=== $URL ==="
+            SIZE=$(curl -sf "$URL" -o tmp.xml 2>/dev/null && wc -c < tmp.xml || echo "FAIL")
+            echo "size: $SIZE"
+            if [[ "$SIZE" -gt 100 ]] 2>/dev/null; then
+              grep -i "snoopy\|aerial\|wallpaper\|__RelativePath\|url" tmp.xml | head -10
+            fi
           done
 
-          echo "=== Try 4K version ==="
-          URL4K="https://updates.cdn-apple.com/2023/videos/aerial/4k/hevc/AD001_A008_C005_SNOOPY_SPACE_v01_SDR_PS_FINAL_20230619.mov"
-          curl -sI "$URL4K" | grep -E "HTTP|Content"
-
-          echo "=== Try browsing the directory ==="
-          curl -s "https://updates.cdn-apple.com/2023/videos/aerial/" | head -50
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fw-results
+          path: "*.xml"
+          if-no-files-found: ignore
+          retention-days: 2
