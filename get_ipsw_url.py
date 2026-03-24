@@ -1,36 +1,35 @@
-import json, urllib.request
+import urllib.request, json
 
-# Try ipsw.me web API directly
-for path in [
-    "https://ipsw.me/api/v4/firmwares.json",
-    "https://api.ipsw.me/v4/firmwares.json",
-    "https://ipsw.me/AppleTV14,1",
-]:
+# Apple's own software update catalog for tvOS
+catalogs = [
+    "https://mesu.apple.com/assets/com_apple_MobileAsset_SoftwareUpdate/com_apple_MobileAsset_SoftwareUpdate.xml",
+    "https://gdmf.apple.com/v2/pmv",
+]
+for url in catalogs:
     try:
-        req = urllib.request.Request(path, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as r:
-            raw = r.read(2000)
-        print(f"OK {path}: {raw[:300]}")
-        break
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "AppleTV14,1/17.4 CFNetwork/1494.0.7 Darwin/23.4.0",
+            "X-Apple-Client-Versions": "iTunesU=1; MZCommerce=24",
+        })
+        with urllib.request.urlopen(req, timeout=15) as r:
+            raw = r.read(5000)
+        print(f"OK {url}:")
+        print(raw[:1000].decode('utf-8', errors='replace'))
+        print()
     except Exception as e:
-        print(f"FAIL {path}: {e}")
+        print(f"FAIL {url}: {e}")
 
-# Try Apple's IPSW catalog
-print("\n=== Apple IPSW Catalog ===")
+# Try Apple GDMF API (publicly known catalog endpoint)
 try:
     req = urllib.request.Request(
-        "https://api.ipsw.me/v4/ipsw/AppleTV14,1",
-        headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
+        "https://gdmf.apple.com/v2/pmv",
+        headers={"User-Agent": "Mozilla/5.0"}
     )
-    with urllib.request.urlopen(req, timeout=10) as r:
+    with urllib.request.urlopen(req, timeout=15) as r:
         d = json.load(r)
-    if isinstance(d, list):
-        for f in d[:5]:
-            print(f.get('version','?'), f.get('url','?')[:80])
-            if f.get('url'):
-                print(f"IPSW_URL={f['url']}")
-                break
-    else:
-        print(d)
+    tvos = d.get('AssetSets', {}).get('tvOS', [])
+    print(f"tvOS versions: {len(tvos)}")
+    for v in tvos[:5]:
+        print(v)
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"GDMF: {e}")
