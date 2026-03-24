@@ -5,16 +5,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test download one video
-        run: |
-          URL="https://sylvan.apple.com/Aerials/2x/Videos/SE_A016_C009_SDR_20190717_SDR_4K_HEVC.mov"
-          curl -sI "$URL" | head -5
-          echo "---"
-          curl -L --max-time 30 -r 0-5000000 "$URL" -o test_sample.mov
-          ls -lh test_sample.mov
+      - name: Find all URLs and newer manifests
+        run: python3 find_all_urls.py
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sample
-          path: test_sample.mov
-          retention-days: 1
+          name: url-lists
+          path: |
+            urls_4k_sdr.txt
+            urls_all.txt
+          retention-days: 5
