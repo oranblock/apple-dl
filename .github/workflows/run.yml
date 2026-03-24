@@ -1,0 +1,23 @@
+on:
+  workflow_dispatch:
+jobs:
+  go:
+    runs-on: macos-latest
+    steps:
+      - run: |
+          curl -s -A "AppleTV11,1/1 AtVUI" https://sylvan.apple.com/Apple_TV_4K_v3.json -o manifest.json
+          echo "bytes: $(wc -c < manifest.json)"
+          python3 -c "
+import json
+with open('manifest.json') as f: d=json.load(f)
+print('assets:', len(d.get('assets',[])))
+for a in d.get('assets',[]):
+    u=a.get('url','')
+    if 'snoopy' in u.lower(): print('SNOOPY:', u)
+for a in d.get('assets',[])[:3]: print('SAMPLE:', a.get('url',''))
+"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest
+          path: manifest.json
+          retention-days: 2
