@@ -5,32 +5,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch real manifests
+      - name: Test download one video
         run: |
-          echo "=== resources-13.tar (tvOS13+ manifest) ==="
-          curl -sf "https://sylvan.apple.com/Aerials/resources-13.tar" -o res13.tar && echo "res13: $(wc -c < res13.tar) bytes" || echo "res13: fail"
-
-          echo "=== resources.tar ==="
-          curl -sf "https://sylvan.apple.com/Aerials/resources.tar" -o res.tar && echo "res: $(wc -c < res.tar) bytes" || echo "res: fail"
-
-          echo "=== 2x entries.json ==="
-          curl -sf "https://sylvan.apple.com/Aerials/2x/entries.json" -o entries2x.json && echo "entries2x: $(wc -c < entries2x.json) bytes" || echo "entries2x: fail"
-
-      - name: Extract tar and find Snoopy
-        run: |
-          if [ -f res13.tar ]; then
-            mkdir res13 && tar -xf res13.tar -C res13
-            ls res13/
-            grep -r -l snoopy res13/ 2>/dev/null || echo "no snoopy in res13"
-            find res13 -name "*.json" | head -5
-          fi
+          URL="https://sylvan.apple.com/Aerials/2x/Videos/SE_A016_C009_SDR_20190717_SDR_4K_HEVC.mov"
+          curl -sI "$URL" | head -5
+          echo "---"
+          curl -L --max-time 30 -r 0-5000000 "$URL" -o test_sample.mov
+          ls -lh test_sample.mov
 
       - uses: actions/upload-artifact@v4
         with:
-          name: manifests
-          path: |
-            res13.tar
-            res.tar
-            entries2x.json
-          if-no-files-found: ignore
-          retention-days: 2
+          name: sample
+          path: test_sample.mov
+          retention-days: 1
