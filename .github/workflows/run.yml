@@ -4,34 +4,24 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 300
     steps:
-      - name: Boot tvOS simulator to mount runtime volume
+      - name: Boot tvOS sim and extract ALL Snoopy assets
         run: |
-          # Create and boot a tvOS 18.5 simulator device
           DEVICE_ID=$(xcrun simctl create "SnoopyTV" "Apple TV 4K (3rd generation)" "com.apple.CoreSimulator.SimRuntime.tvOS-18-5")
-          echo "Created device: $DEVICE_ID"
           xcrun simctl boot "$DEVICE_ID" 2>&1 || true
           sleep 15
 
-          echo "=== Volume after boot ==="
-          ls -la /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ | head -20
-          echo "File count: $(find /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ -type f 2>/dev/null | wc -l)"
+          ASSETS_PATH="/Library/Developer/CoreSimulator/Volumes/tvOS_22L572/Library/Developer/CoreSimulator/Profiles/Runtimes/tvOS 18.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/PrivateFrameworks/IdleCharacterUI.framework"
+          echo "Assets path exists: $(ls "$ASSETS_PATH" 2>/dev/null | head -5)"
 
-          echo "=== Find .mov files ==="
-          find /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ -name "*.mov" 2>/dev/null | head -20
-          find /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ -name "*.mov" 2>/dev/null | while read f; do
-            echo "$(wc -c < "$f") $f"
-          done | sort -rn | head -20
+          mkdir -p ~/snoopy_assets
+          find "$ASSETS_PATH" \( -name "*.mov" -o -name "*.heic" -o -name "*.png" \) -exec cp {} ~/snoopy_assets/ \;
 
-      - name: Copy screensaver assets
-        run: |
-          mkdir -p ~/screensavers
-          find /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ \( -name "*.mov" -o -name "*.heic" \) 2>/dev/null -exec cp {} ~/screensavers/ \;
-          echo "=== Copied $(ls ~/screensavers/ | wc -l) files ==="
-          ls -lh ~/screensavers/ | sort -k5 -rh | head -30
+          echo "=== Copied files ==="
+          ls -lh ~/snoopy_assets/ | sort -k5 -rh | head -50
+          echo "Total: $(ls ~/snoopy_assets/ | wc -l) files, $(du -sh ~/snoopy_assets/ | cut -f1)"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: snoopy-screensavers
-          path: ~/screensavers/
-          retention-days: 5
-        if: always()
+          name: snoopy-assets
+          path: ~/snoopy_assets/
+          retention-days: 7
