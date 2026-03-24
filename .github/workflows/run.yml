@@ -5,22 +5,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test sylvan classic videos
-        run: curl -sI "https://sylvan.apple.com/Videos/b1-1.mov" | grep -E "HTTP|Content"
-
-      - name: Check newer manifests
-        run: python3 check_newer.py
-
-      - name: Get all classic URLs
+      - name: Fetch real manifests
         run: |
-          curl -sf -A "AppleTV11,1/1 AtVUI" "https://sylvan.apple.com/entries.json" -o entries.json
-          python3 extract_urls.py
+          echo "=== resources-13.tar (tvOS13+ manifest) ==="
+          curl -sf "https://sylvan.apple.com/Aerials/resources-13.tar" -o res13.tar && echo "res13: $(wc -c < res13.tar) bytes" || echo "res13: fail"
+
+          echo "=== resources.tar ==="
+          curl -sf "https://sylvan.apple.com/Aerials/resources.tar" -o res.tar && echo "res: $(wc -c < res.tar) bytes" || echo "res: fail"
+
+          echo "=== 2x entries.json ==="
+          curl -sf "https://sylvan.apple.com/Aerials/2x/entries.json" -o entries2x.json && echo "entries2x: $(wc -c < entries2x.json) bytes" || echo "entries2x: fail"
+
+      - name: Extract tar and find Snoopy
+        run: |
+          if [ -f res13.tar ]; then
+            mkdir res13 && tar -xf res13.tar -C res13
+            ls res13/
+            grep -r -l snoopy res13/ 2>/dev/null || echo "no snoopy in res13"
+            find res13 -name "*.json" | head -5
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: results
+          name: manifests
           path: |
-            all_urls.txt
-            newer_manifest.json
+            res13.tar
+            res.tar
+            entries2x.json
           if-no-files-found: ignore
           retention-days: 2
