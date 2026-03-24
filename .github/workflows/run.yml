@@ -4,38 +4,28 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 300
     steps:
-      - name: Find and extract Snoopy screensavers
+      - name: Explore simulator runtime paths
         run: |
-          echo "=== tvOS volume contents ==="
-          ls /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ 2>/dev/null || echo "checking other..."
-          ls /Library/Developer/CoreSimulator/Volumes/ 
+          echo "=== tvOS_22L572 contents ==="
+          ls -la /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ 2>/dev/null | head -20
 
-          echo "=== Finding all .mov files in tvOS volumes ==="
-          for vol in tvOS_22L572 tvOS_23J579 tvOS_23K51; do
-            VOL_PATH="/Library/Developer/CoreSimulator/Volumes/$vol"
-            if [ -d "$VOL_PATH" ]; then
-              echo "--- $vol ---"
-              find "$VOL_PATH" -name "*.mov" 2>/dev/null | while read f; do
-                SIZE=$(wc -c < "$f")
-                echo "$SIZE $f"
-              done | sort -rn | head -20
-            fi
-          done
+          echo "=== Full path from article ==="
+          ls /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/Library/ 2>/dev/null || echo "no Library"
+          find /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ -maxdepth 5 2>/dev/null | head -30
 
-      - name: Copy all screensaver assets
+          echo "=== Alternative paths ==="
+          ls /Library/Developer/CoreSimulator/Profiles/Runtimes/ 2>/dev/null | head -20
+          ls /Library/Developer/CoreSimulator/Images/ 2>/dev/null | head -20
+
+          echo "=== All simruntime directories ==="
+          find / -name "*.simruntime" -maxdepth 8 2>/dev/null | head -20
+
+          echo "=== xcrun simctl ==="
+          xcrun simctl runtime list 2>&1 | head -20
+
+      - name: Mount tvOS runtime if needed
         run: |
-          mkdir -p ~/screensavers
-          for vol in tvOS_22L572 tvOS_23J579 tvOS_23K51; do
-            VOL_PATH="/Library/Developer/CoreSimulator/Volumes/$vol"
-            if [ -d "$VOL_PATH" ]; then
-              find "$VOL_PATH" \( -name "*.mov" -o -name "*.heic" \) 2>/dev/null -exec cp {} ~/screensavers/ \;
-            fi
-          done
-          echo "=== Copied files ==="
-          ls -lh ~/screensavers/ | sort -k5 -rh | head -30
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: snoopy-screensavers
-          path: ~/screensavers/
-          retention-days: 5
+          xcrun simctl runtime show com.apple.CoreSimulator.SimRuntime.tvOS-18-5 2>&1 || true
+          RUNTIME_PATH=$(xcrun simctl runtime show com.apple.CoreSimulator.SimRuntime.tvOS-18-5 2>&1 | grep -i path | awk '{print $NF}')
+          echo "Runtime path: $RUNTIME_PATH"
+          find "$RUNTIME_PATH" -name "*.mov" 2>/dev/null | head -20 || true
