@@ -6,28 +6,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test IPSW URL + get size
+      - name: Download full IPSW and list contents
         run: |
           URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
-          curl -sI "$URL" | head -10
-          SIZE=$(curl -sI "$URL" | grep -i content-length | awk '{print $2}' | tr -d '\r')
-          echo "IPSW_SIZE=$SIZE" >> $GITHUB_ENV
-
-      - name: Fetch ZIP tail (find central directory)
-        run: |
-          URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
-          curl -s -r -65536- "$URL" -o ipsw_tail.bin
-          python3 check_eocd.py
-
-      - name: List all files in IPSW
-        run: |
-          URL="https://updates.cdn-apple.com/2026WinterFCS/fullrestores/089-59495/6689ECF8-1BE4-4250-BECB-5BB9AE719DC0/AppleTV5,3_26.3_23K620_Restore.ipsw"
-          python3 list_ipsw_remote.py "$URL" "$IPSW_SIZE"
+          echo "Downloading IPSW..."
+          curl -L --progress-bar "$URL" -o Restore.ipsw
+          ls -lh Restore.ipsw
+          echo "Listing contents..."
+          unzip -l Restore.ipsw | tee ipsw_files.txt
 
       - uses: actions/upload-artifact@v4
         with:
           name: ipsw-listing
           path: ipsw_files.txt
-          if-no-files-found: ignore
           retention-days: 2
-        if: always()
