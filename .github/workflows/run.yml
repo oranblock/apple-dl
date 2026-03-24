@@ -3,15 +3,28 @@ jobs:
   go:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Try Snoopy with various Apple TV headers
+        run: |
+          URL="https://updates.cdn-apple.com/2023/videos/aerial/2k/h264/AD001_A008_C005_SNOOPY_SPACE_v01_SDR_PS_FINAL_20230619.mov"
 
-      - name: Find all URLs and newer manifests
-        run: python3 find_all_urls.py
+          for UA in \
+            "AppleTV11,1/1" \
+            "AppleTV14,1/1" \
+            "com.apple.tvwallpaper" \
+            "TVWallpaper/1.0 CFNetwork/1490 Darwin/23.0.0" \
+            ""; do
+            echo "UA: '$UA'"
+            curl -sI \
+              -A "$UA" \
+              -H "X-Apple-Store-Front: 143441-1,29" \
+              -H "X-Apple-TV-Model: AppleTV14,1" \
+              "$URL" | grep -E "HTTP|Content-Length|Location"
+            echo ""
+          done
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: url-lists
-          path: |
-            urls_4k_sdr.txt
-            urls_all.txt
-          retention-days: 5
+          echo "=== Try 4K version ==="
+          URL4K="https://updates.cdn-apple.com/2023/videos/aerial/4k/hevc/AD001_A008_C005_SNOOPY_SPACE_v01_SDR_PS_FINAL_20230619.mov"
+          curl -sI "$URL4K" | grep -E "HTTP|Content"
+
+          echo "=== Try browsing the directory ==="
+          curl -s "https://updates.cdn-apple.com/2023/videos/aerial/" | head -50
