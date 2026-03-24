@@ -3,22 +3,44 @@ jobs:
   go:
     runs-on: macos-latest
     steps:
-      - name: Try multiple manifest URLs
+      - name: Search manifests for Snoopy
         run: |
           for URL in \
-            "https://sylvan.apple.com/Apple_TV_4K_v3.json" \
-            "https://sylvan.apple.com/Apple_TV_4K_v2.json" \
             "https://sylvan.apple.com/entries.json" \
-            "https://atv-ext.apple.com/lazy-assets-v2/select-items"; do
+            "https://sylvan.apple.com/2/entries.json" \
+            "https://sylvan.apple.com/3/entries.json" \
+            "https://sylvan.apple.com/4/entries.json" \
+            "https://sylvan.apple.com/5/entries.json"; do
             echo "=== $URL ==="
-            curl -sv -A "AppleTV11,1/1 AtVUI" "$URL" 2>&1 | tail -20
-            echo ""
+            OUT=$(curl -sf -A "AppleTV11,1/1 AtVUI" "$URL" 2>/dev/null)
+            if [ -n "$OUT" ]; then
+              echo "$OUT" | python3 -c "
+import json,sys
+try:
+  d=json.load(sys.stdin)
+  assets=d.get('assets',d.get('entries',[]))
+  snoopy=[a.get('url','') for a in assets if 'snoopy' in str(a).lower()]
+  if snoopy:
+    print('SNOOPY FOUND:', snoopy)
+  else:
+    print('No snoopy. Total assets:', len(assets))
+    for a in assets[:2]: print('  sample:', a.get('url',''))
+except Exception as e:
+  print('parse error:', e)
+  print(sys.stdin.read()[:200])
+"
+            else
+              echo "  empty/failed"
+            fi
           done
 
-      - name: Upload results
-        uses: actions/upload-artifact@v4
+      - name: Also try entries.json and save
+        run: |
+          curl -s -A "AppleTV11,1/1 AtVUI" https://sylvan.apple.com/entries.json -o entries.json
+          curl -s -A "AppleTV11,1/1 AtVUI" https://sylvan.apple.com/2/entries.json -o entries2.json 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: results
-          path: manifest.json
+          name: manifests
+          path: "*.json"
           retention-days: 2
-        if: always()
