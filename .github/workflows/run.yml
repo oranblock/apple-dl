@@ -4,31 +4,34 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 300
     steps:
-      - name: Find and mount tvOS runtime disk image
+      - name: Boot tvOS simulator to mount runtime volume
         run: |
-          echo "=== Runtimes directory ==="
-          ls -la /Library/Developer/CoreSimulator/Profiles/Runtimes/
-          find /Library/Developer/CoreSimulator/Profiles/Runtimes/ -maxdepth 3 2>/dev/null | head -30
+          # Create and boot a tvOS 18.5 simulator device
+          DEVICE_ID=$(xcrun simctl create "SnoopyTV" "Apple TV 4K (3rd generation)" "com.apple.CoreSimulator.SimRuntime.tvOS-18-5")
+          echo "Created device: $DEVICE_ID"
+          xcrun simctl boot "$DEVICE_ID" 2>&1 || true
+          sleep 15
 
-          echo "=== Find disk image files ==="
-          find /Library/Developer/CoreSimulator -name "*.dmg" -o -name "*.img" -o -name "*.cryptex" 2>/dev/null | head -20
+          echo "=== Volume after boot ==="
+          ls -la /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ | head -20
+          echo "File count: $(find /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ -type f 2>/dev/null | wc -l)"
 
-          echo "=== xcrun simctl runtime show ==="
-          xcrun simctl runtime show "BE1675DE-8C48-49F8-9DCB-EFA5AB312771" 2>&1
+          echo "=== Find .mov files ==="
+          find /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ -name "*.mov" 2>/dev/null | head -20
+          find /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ -name "*.mov" 2>/dev/null | while read f; do
+            echo "$(wc -c < "$f") $f"
+          done | sort -rn | head -20
 
-      - name: Mount tvOS 18.5 runtime
+      - name: Copy screensaver assets
         run: |
-          # Get the disk image path
-          DMGPATH=$(xcrun simctl runtime show "BE1675DE-8C48-49F8-9DCB-EFA5AB312771" 2>&1 | grep -i "path\|dmg\|image" | head -3)
-          echo "DMG info: $DMGPATH"
+          mkdir -p ~/screensavers
+          find /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ \( -name "*.mov" -o -name "*.heic" \) 2>/dev/null -exec cp {} ~/screensavers/ \;
+          echo "=== Copied $(ls ~/screensavers/ | wc -l) files ==="
+          ls -lh ~/screensavers/ | sort -k5 -rh | head -30
 
-          # Try to mount using simctl
-          xcrun simctl runtime match "BE1675DE-8C48-49F8-9DCB-EFA5AB312771" 2>&1 || true
-
-          # Check if volume got populated
-          ls /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ 2>/dev/null
-          echo "Vol contents: $(ls /Library/Developer/CoreSimulator/Volumes/tvOS_22L572/ 2>/dev/null | wc -l) files"
-
-          # Find .mov files anywhere on the system (excluding noise)
-          echo "=== All .mov files on system ==="
-          find /Library/Developer/CoreSimulator/ -name "*.mov" 2>/dev/null | head -30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snoopy-screensavers
+          path: ~/screensavers/
+          retention-days: 5
+        if: always()
